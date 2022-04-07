@@ -4,18 +4,21 @@ import Browser
 import Csv.Decode as CsvDecode
 import File exposing (File)
 import File.Select as Select
-import Html exposing (Html, button, div, p, text)
-import Html.Attributes exposing (style)
-import Html.Events exposing (onClick)
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
 import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline as Decode
 import Json.Encode as Encode
 import Task
+import Ui
 
 
 type alias Model =
     { music : List Music
+    , searchValue : String
+    , order : Maybe ( String, Ui.Direction )
     }
 
 
@@ -24,6 +27,9 @@ type Msg
     | CsvSelected File
     | CsvLoaded String
     | CsvUploaded (Result Http.Error (List Music))
+    | UpdateSearch String
+    | UpdateOrder ( String, Ui.Direction )
+    | NoOp
 
 
 main : Program (List Music) Model Msg
@@ -38,7 +44,12 @@ main =
 
 init : List Music -> ( Model, Cmd Msg )
 init music =
-    ( { music = music }, Cmd.none )
+    ( { music = music
+      , searchValue = ""
+      , order = Nothing
+      }
+    , Cmd.none
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -76,6 +87,19 @@ update msg model =
                 Err error ->
                     ( model, Cmd.none )
 
+        UpdateSearch value ->
+            ( { model | searchValue = value }
+            , Cmd.none
+            )
+
+        UpdateOrder order ->
+            ( { model | order = Just order }
+            , Cmd.none
+            )
+
+        NoOp ->
+            ( model, Cmd.none )
+
 
 view : Model -> Html Msg
 view model =
@@ -85,12 +109,14 @@ view model =
 
         content ->
             div []
-                (List.map
-                    (\row ->
-                        p [ style "white-space" "pre" ] [ text row.composer ]
-                    )
-                    content
-                )
+                [ musicTable
+                    { music = content
+                    , search = model.searchValue
+                    , onSearch = UpdateSearch
+                    , order = model.order
+                    , onOrder = UpdateOrder
+                    }
+                ]
 
 
 
@@ -170,3 +196,88 @@ musicDecoder =
         |> Decode.required "publisher" Decode.string
         |> Decode.required "parts" Decode.string
         |> Decode.required "qty" Decode.int
+
+
+musicTable :
+    { music : List Music
+    , search : String
+    , onSearch : String -> Msg
+    , order : Maybe ( String, Ui.Direction )
+    , onOrder : ( String, Ui.Direction ) -> Msg
+    }
+    -> Html Msg
+musicTable { music, search, onSearch, order, onOrder } =
+    Ui.table
+        { headers =
+            [ "Title"
+            , "Composer"
+            , "Publisher"
+            , "Parts"
+            , "Qty"
+            ]
+        , data = music
+        , render =
+            \piece ->
+                [ td [] [ text piece.title ]
+                , td [] [ text piece.composer ]
+                , td [] [ text piece.publisher ]
+                , td [] [ text piece.parts ]
+                , td [] [ text (String.fromInt piece.qty) ]
+                ]
+        , controls =
+            [ Ui.Search search
+                (\piece ->
+                    let
+                        query =
+                            String.toLower search
+
+                        title =
+                            String.toLower piece.title
+
+                        composer =
+                            String.toLower piece.composer
+
+                        publisher =
+                            String.toLower piece.publisher
+
+                        parts =
+                            String.toLower piece.parts
+
+                        qty =
+                            String.fromInt piece.qty
+                    in
+                    String.contains query title
+                        || String.contains query composer
+                        || String.contains query publisher
+                        || String.contains query parts
+                        || String.contains query qty
+                )
+                onSearch
+            , case order of
+                Nothing ->
+                    Ui.OrderBy "" (\_ -> "") Ui.Ascending onOrder
+
+                Just ( field, direction ) ->
+                    Ui.OrderBy field
+                        (\piece ->
+                            case field of
+                                "Title" ->
+                                    piece.title
+
+                                "Composer" ->
+                                    piece.composer
+
+                                "Publisher" ->
+                                    piece.publisher
+
+                                "Parts" ->
+                                    piece.parts
+
+                                _ ->
+                                    ""
+                        )
+                        direction
+                        onOrder
+            ]
+        }
+        []

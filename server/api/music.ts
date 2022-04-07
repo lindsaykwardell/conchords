@@ -38,16 +38,24 @@ async function get(req: IncomingMessage, res: ServerResponse) {
 async function post(req: IncomingMessage, res: ServerResponse) {
   const body = await useBody<Music | Music[]>(req);
   if (!Array.isArray(body)) {
-    return prisma.music.create({
-      data: {
-        ...body,
-      },
-    });
+    if (!!body.title) {
+      return prisma.music.create({
+        data: {
+          ...body,
+        },
+      });
+    } else {
+      res.statusCode = 400;
+      res.end();
+      return;
+    }
   } else {
     await prisma.music.createMany({
-      data: body.map((music) => ({
-        ...music,
-      })),
+      data: body
+        .filter((music) => !!music.title)
+        .map((music) => ({
+          ...music,
+        })),
     });
 
     return prisma.music.findMany();
